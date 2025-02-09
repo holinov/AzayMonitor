@@ -1,8 +1,20 @@
 /**
- * Blink
+ * AzayMonitor
  *
- * Turns on an LED on for one second,
- * then off for one second, repeatedly.
+ * A medication and feeding schedule monitoring system with timer functionality.
+ * Features:
+ * - Displays current task and time on LCD
+ * - Supports multiple task types: simple tasks, timed tasks, and visual separators
+ * - Configurable relative timers for feeding and medication intervals
+ * - Buzzer alerts for timed events
+ * - EEPROM state persistence
+ * - Debug mode support for testing
+ *
+ * Hardware:
+ * - LCD Display (I2C)
+ * - DS3231 RTC
+ * - Passive Buzzer
+ * - Push Button
  */
 #include <Arduino.h>
 #include <Wire.h>
@@ -21,11 +33,22 @@ DS3231 rtclock;
 #define HAS_REALTIVE_TIMER 0b00000001
 #define HAS_ABSOLUTE_TIMER 0b00000010
 
+#ifndef DEBUG
 #define HALF_HOUR 1800
-// #define HALF_HOUR 3
 #define TEN_MINUTES 600
+#else
+#define HALF_HOUR 3
+#define TEN_MINUTES 3
+#endif
 
 
+
+// Task declaration macros
+#define SIMPLE_TASK(msg)               { msg, HAS_NO_TIMER, 0 }
+#define RELATIVE_TIMER_TASK(msg, time) { msg, HAS_REALTIVE_TIMER, time }
+#define ABSOLUTE_TIMER_TASK(msg, time) { msg, HAS_ABSOLUTE_TIMER, time }
+#define SPACER_TASK()                 { "Spacer", HAS_REALTIVE_TIMER, TEN_MINUTES }
+#define BLOCK_SEPARATOR()             { "---------------", HAS_NO_TIMER, 0 }
 
 // --------------------- Типы ---------------------
 struct TimeRecord {
@@ -41,32 +64,32 @@ struct TaskEntry {
 };
 
 struct TaskEntry tasks[] = {
-    { "Antepsin 1/4",    HAS_NO_TIMER,       0          },
-    { "Kvamatel 1/6",    HAS_NO_TIMER,       0          },
-    { "Vetmedin 1",      HAS_NO_TIMER,       0          },
-    { "Feed",            HAS_REALTIVE_TIMER, HALF_HOUR  },
-    { "Trigrim 1/4",     HAS_NO_TIMER,       0          },
-    { "Gaba 1ml",        HAS_NO_TIMER,       0          },
-    { "Amlodipin 1/15",  HAS_NO_TIMER,       0          },
-    { "Toreo 0.13ml",    HAS_NO_TIMER,       0          },
-    { "Spacer",          HAS_REALTIVE_TIMER, TEN_MINUTES},
+    SIMPLE_TASK("Antepsin 1/4"),
+    SIMPLE_TASK("Kvamatel 1/6"),
+    SIMPLE_TASK("Vetmedin 1"),
+    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
+    SIMPLE_TASK("Trigrim 1/4"),
+    SIMPLE_TASK("Gaba 1ml"),
+    SIMPLE_TASK("Amlodipin 1/15"),
+    SIMPLE_TASK("Viagra50/14 1ml"),
+    SPACER_TASK(),
 
-    { "Feed",            HAS_NO_TIMER,       0          },
+    BLOCK_SEPARATOR(),
 
-    { "Antepsin 1/4",    HAS_NO_TIMER,       0          },
-    { "Kvamatel 1/6",    HAS_NO_TIMER,       0          },
-    { "Vetmedin 1",      HAS_NO_TIMER,       0          },
-    { "Feed",            HAS_REALTIVE_TIMER, HALF_HOUR  },
-    { "Veroshpiron 1/4", HAS_NO_TIMER,       0          },
-    { "Gaba 1ml",        HAS_NO_TIMER,       0          },
-    { "Amlodipin 1/15",  HAS_NO_TIMER,       0          },
-    { "Toreo 0.13ml",    HAS_NO_TIMER,       0          },
-    { "Spacer",          HAS_REALTIVE_TIMER, TEN_MINUTES},
+    SIMPLE_TASK("Antepsin 1/4"),
+    SIMPLE_TASK("Kvamatel 1/6"),
+    SIMPLE_TASK("Vetmedin 1"),
+    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
+    SIMPLE_TASK("Veroshpiron 1/4"),
+    SIMPLE_TASK("Gaba 1ml"),
+    SIMPLE_TASK("Amlodipin 1/15"),
+    SIMPLE_TASK("Viagra50/14 1ml"),
+    SPACER_TASK(),
 
-    { "Vetmedin 1",      HAS_NO_TIMER,       0          },
-    { "Feed",            HAS_REALTIVE_TIMER, HALF_HOUR  },
-    { "Ursosan 1/6",     HAS_REALTIVE_TIMER, TEN_MINUTES},
-    { "Sleep",           HAS_NO_TIMER,       0          }
+    SIMPLE_TASK("Vetmedin 1"),
+    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
+    RELATIVE_TIMER_TASK("Ursosan 1/6", TEN_MINUTES),
+    SIMPLE_TASK("Sleep")
 };
 
 #define ALL_MSGS (sizeof(tasks) / sizeof(tasks[0]))
@@ -89,14 +112,20 @@ SystemState sysState = NORMAL;
 int melody[] = {
   NOTE_C5, NOTE_D5, NOTE_E5, NOTE_F5, NOTE_G5, NOTE_A5, NOTE_B5, NOTE_C6
 };
-int duration = 500;  // длительность ноты в миллисекундах
+unsigned long duration = 500;  // длительность ноты в миллисекундах
 
-void playMelody(int duration) {
+void playMelody(unsigned long duration) {
   for (int i = 0; i < 8; i++) {
     tone(PASSIVE_BUZZER_PIN, melody[i], duration);
-    delay(duration / 2);
-    if(digitalRead(BUTTON_PIN) == HIGH) {
-      break;
+
+    // Check button during the note duration
+    unsigned long startTime = millis();
+    while (millis() - startTime < duration) {
+      if (digitalRead(BUTTON_PIN) == HIGH) {
+        noTone(PASSIVE_BUZZER_PIN);
+        return;
+      }
+      delay(10);  // Small delay to prevent too frequent checks
     }
   }
   noTone(PASSIVE_BUZZER_PIN);
