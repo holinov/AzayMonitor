@@ -26,31 +26,62 @@
 #define BUTTON_PIN 8
 #define PASSIVE_BUZZER_PIN 9
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);  // LCD с адресом 0x27, 16 символов, 2 строки
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // LCD at address 0x27, 16 chars, 2 lines
 DS3231 rtclock;
 
 #define HAS_NO_TIMER       0b00000000
 #define HAS_REALTIVE_TIMER 0b00000001
 #define HAS_ABSOLUTE_TIMER 0b00000010
 
+// #define DEBUG 1
+
 #ifndef DEBUG
 #define HALF_HOUR 1800
 #define TEN_MINUTES 600
 #else
-#define HALF_HOUR 3
-#define TEN_MINUTES 3
+#define HALF_HOUR 2
+#define TEN_MINUTES 2
 #endif
 
+#define NOTE_DURATION 250
 
+// Medication names
+#define MED_ANTEPSIN                   "Antepsin 1/4"
+#define MED_KVAMATEL                   "Kvamatel 1/6"
+#define MED_VETMEDIN                   "Vetmedin 1"
+#define MED_FEED                       "Feed"
+#define MED_TRIGRIM                    "Trigrim 1/4"
+#define MED_GABA                       "Gaba 1ml"
+#define MED_AMLODIPIN                  "Amlodipin 1/15"
+#define MED_VIAGRA                     "Viagra50/14 1ml"
+#define MED_VEROSHPIRON                "Veroshpiron 1/4"
+#define MED_URSOSAN                    "Ursosan 1/6"
+#define MED_SLEEP                      "Sleep"
+#define MED_WALK                       "Walk"
 
 // Task declaration macros
 #define SIMPLE_TASK(msg)               { msg, HAS_NO_TIMER, 0 }
 #define RELATIVE_TIMER_TASK(msg, time) { msg, HAS_REALTIVE_TIMER, time }
 #define ABSOLUTE_TIMER_TASK(msg, time) { msg, HAS_ABSOLUTE_TIMER, time }
-#define SPACER_TASK()                 { "Spacer", HAS_REALTIVE_TIMER, TEN_MINUTES }
-#define BLOCK_SEPARATOR()             { "---------------", HAS_NO_TIMER, 0 }
+#define SPACER_TASK()                  { "Spacer", HAS_REALTIVE_TIMER, TEN_MINUTES }
+#define BLOCK_SEPARATOR()              { "---------------", HAS_NO_TIMER, 0 }
 
-// --------------------- Типы ---------------------
+// Task block macros
+#define MEDICATION_BLOCK(var_med)      \
+    /* Common morning/evening meds */  \
+    SIMPLE_TASK(MED_ANTEPSIN),        \
+    SIMPLE_TASK(MED_KVAMATEL),        \
+    SIMPLE_TASK(MED_VETMEDIN),        \
+    RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR), \
+    /* Variable medication */         \
+    SIMPLE_TASK(var_med),             \
+    /* Rest of common meds */         \
+    SIMPLE_TASK(MED_GABA),            \
+    SIMPLE_TASK(MED_AMLODIPIN),       \
+    SIMPLE_TASK(MED_VIAGRA),          \
+    SPACER_TASK()
+
+// --------------------- Types ---------------------
 struct TimeRecord {
   uint8_t hours;
   uint8_t minutes;
@@ -60,59 +91,50 @@ struct TimeRecord {
 struct TaskEntry {
   char message[16];
   byte flags;
-  unsigned long time;  // для относительного таймера — смещение в секундах
+  unsigned long time;  // For relative timer - offset in seconds
 };
 
 struct TaskEntry tasks[] = {
-    SIMPLE_TASK("Antepsin 1/4"),
-    SIMPLE_TASK("Kvamatel 1/6"),
-    SIMPLE_TASK("Vetmedin 1"),
-    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
-    SIMPLE_TASK("Trigrim 1/4"),
-    SIMPLE_TASK("Gaba 1ml"),
-    SIMPLE_TASK("Amlodipin 1/15"),
-    SIMPLE_TASK("Viagra50/14 1ml"),
-    SPACER_TASK(),
-
+    SIMPLE_TASK(MED_WALK),
+    MEDICATION_BLOCK(MED_TRIGRIM),
     BLOCK_SEPARATOR(),
 
-    SIMPLE_TASK("Antepsin 1/4"),
-    SIMPLE_TASK("Kvamatel 1/6"),
-    SIMPLE_TASK("Vetmedin 1"),
-    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
-    SIMPLE_TASK("Veroshpiron 1/4"),
-    SIMPLE_TASK("Gaba 1ml"),
-    SIMPLE_TASK("Amlodipin 1/15"),
-    SIMPLE_TASK("Viagra50/14 1ml"),
-    SPACER_TASK(),
+    SIMPLE_TASK(MED_WALK),
 
-    SIMPLE_TASK("Vetmedin 1"),
-    RELATIVE_TIMER_TASK("Feed", HALF_HOUR),
-    RELATIVE_TIMER_TASK("Ursosan 1/6", TEN_MINUTES),
-    SIMPLE_TASK("Sleep")
+    MEDICATION_BLOCK(MED_VEROSHPIRON),
+    BLOCK_SEPARATOR(),
+
+    SIMPLE_TASK(MED_WALK),
+
+
+    SIMPLE_TASK(MED_VETMEDIN),
+    RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR),
+    SIMPLE_TASK(MED_WALK),
+    RELATIVE_TIMER_TASK(MED_URSOSAN, TEN_MINUTES),
+    SIMPLE_TASK(MED_SLEEP)
 };
 
 #define ALL_MSGS (sizeof(tasks) / sizeof(tasks[0]))
 #define STATE_EEPROM_ADDRESS 0x00
 
-// --------------------- Глобальное состояние ---------------------
+// --------------------- Global State ---------------------
 struct CurrentState {
   byte curStep;
   byte nextAlarmFlags;
-  unsigned long nextAlarm; // время срабатывания таймера (в секундах от начала дня)
+  unsigned long nextAlarm; // Time when timer should trigger (in seconds from start of day)
 };
 
 CurrentState globalState = { 0, 0, 0 };
 
-// --------------------- Состояния системы ---------------------
+// --------------------- System States ---------------------
 enum SystemState { NORMAL, ALARM_RINGING, ALARM_STOPPED };
 SystemState sysState = NORMAL;
 
-// --------------------- Мелодия ---------------------
+// --------------------- Melody ---------------------
 int melody[] = {
   NOTE_C5, NOTE_D5, NOTE_E5, NOTE_F5, NOTE_G5, NOTE_A5, NOTE_B5, NOTE_C6
 };
-unsigned long duration = 500;  // длительность ноты в миллисекундах
+unsigned long duration = NOTE_DURATION;  // Note duration in milliseconds
 
 void playMelody(unsigned long duration) {
   for (int i = 0; i < 8; i++) {
@@ -131,7 +153,7 @@ void playMelody(unsigned long duration) {
   noTone(PASSIVE_BUZZER_PIN);
 }
 
-// --------------------- Функции работы со временем ---------------------
+// --------------------- Time Functions ---------------------
 TimeRecord getCurrentTime() {
   TimeRecord t;
   bool is24, ampm;
@@ -178,13 +200,13 @@ void setup() {
   Serial.begin(9600);
   while (!Serial) {};
 
-  // Чтение состояния из EEPROM в структуру globalState
+  // Read state from EEPROM into globalState structure
   EEPROM.get(STATE_EEPROM_ADDRESS, globalState);
 
   lcd.init();
   lcd.backlight();
 
-  // При необходимости установки времени раскомментируйте:
+  // Uncomment to set time if needed:
   // DateTime curDt = DateTime(__DATE__, __TIME__);
   // rtclock.setEpoch(curDt.unixtime());
   // rtclock.setClockMode(false);
@@ -196,20 +218,20 @@ void loop() {
   unsigned long currentSeconds = timeToSeconds(currentTime);
   TaskEntry curTask = tasks[globalState.curStep];
 
-  // Отображение текущего задания и состояния на LCD
+  // Display current task and state on LCD
   lcd.setCursor(0, 0);
   lcd.print(curTask.message);
   lcd.setCursor(0, 1);
   lcd.print(globalState.curStep);
 
-  // Обработка состояний системы
+  // System state processing
   switch (sysState) {
     case NORMAL: {
-      // Если задание с таймером и время срабатывания ещё не установлено, устанавливаем его
+      // If task has timer and trigger time is not set, set it
       if ((curTask.flags & HAS_REALTIVE_TIMER) && (globalState.nextAlarm == 0)) {
         globalState.nextAlarm = currentSeconds + curTask.time;
-        // Логирование в Serial: вывод времени, когда сработает следующий таймер.
-        unsigned long alarmSec = globalState.nextAlarm % 86400;  // приводим к диапазону суток
+        // Log to Serial: output time when next alarm will trigger
+        unsigned long alarmSec = globalState.nextAlarm % 86400;  // Convert to day range
         TimeRecord alarmTime = secondsToTime(alarmSec);
         Serial.print("Next alarm will be activated at: ");
         Serial.print(alarmTime.hours);
@@ -222,36 +244,36 @@ void loop() {
 
         EEPROM.put(STATE_EEPROM_ADDRESS, globalState);
       }
-      // Если задание с таймером и время срабатывания наступило, переходим в режим тревоги
+      // If task has timer and trigger time has come, switch to alarm mode
       if ((curTask.flags & HAS_REALTIVE_TIMER) && (globalState.nextAlarm > 0) && (currentSeconds >= globalState.nextAlarm)) {
         sysState = ALARM_RINGING;
       }
-      // В нормальном режиме, если кнопка нажата, переходим к следующему заданию
+      // In normal mode, if button is pressed, move to next task
       if (digitalRead(BUTTON_PIN) == HIGH) {
         lcd.clear();
         globalState.curStep++;
         if (globalState.curStep >= ALL_MSGS) {
           globalState.curStep = 0;
         }
-        // Сброс времени тревоги при переходе к новому заданию
+        // Reset alarm time when moving to new task
         globalState.nextAlarm = 0;
         EEPROM.put(STATE_EEPROM_ADDRESS, globalState);
-        delay(300); // антидребезг
+        delay(300); // Debounce
       }
       break;
     }
     case ALARM_RINGING: {
-      // Режим тревоги: проигрываем мелодию
+      // Alarm mode: play melody
       playMelody(duration);
-      // Если кнопка нажата – прекращаем мелодию и переходим в состояние ALARM_STOPPED
+      // If button pressed - stop melody and switch to ALARM_STOPPED state
       if (digitalRead(BUTTON_PIN) == HIGH) {
         sysState = ALARM_STOPPED;
-        delay(300); // антидребезг
+        delay(300); // Debounce
       }
       break;
     }
     case ALARM_STOPPED: {
-      // После остановки тревоги ждём следующего нажатия кнопки для перехода к следующему заданию
+      // After alarm is stopped, wait for next button press to move to next task
       if (digitalRead(BUTTON_PIN) == HIGH) {
         sysState = NORMAL;
         lcd.clear();
@@ -259,16 +281,16 @@ void loop() {
         if (globalState.curStep >= ALL_MSGS) {
           globalState.curStep = 0;
         }
-        // Сброс времени тревоги при переходе к новому заданию
+        // Reset alarm time when moving to new task
         globalState.nextAlarm = 0;
         EEPROM.put(STATE_EEPROM_ADDRESS, globalState);
-        delay(300); // антидребезг
+        delay(300); // Debounce
       }
       break;
     }
   } // switch
 
-  // Вывод текущего времени на LCD
+  // Display current time on LCD
   displayTime(currentTime);
   delay(150);
 }
