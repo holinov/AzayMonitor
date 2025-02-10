@@ -290,7 +290,18 @@ void loop() {
     }
   } // switch
 
-  // Display current time on LCD
-  displayTime(currentTime);
+  // Display current time or countdown on LCD
+  if (globalState.nextAlarm > 0) {
+    // If alarm is set, show countdown
+    if (currentSeconds < globalState.nextAlarm) {
+      unsigned long timeLeft = globalState.nextAlarm - currentSeconds;
+      displayTime(secondsToTime(timeLeft));
+    } else {
+      displayTime(currentTime);  // Show current time if countdown finished
+    }
+  } else {
+    // No alarm set, show current time
+    displayTime(currentTime);
+  }
   delay(150);
 }
