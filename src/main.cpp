@@ -183,13 +183,19 @@ void print2digits(byte num) {
   lcd.print(num);
 }
 
-void displayTime(const TimeRecord &t) {
-  lcd.setCursor(8, 1);
+void displayTime(const bool isCountdown, const TimeRecord &t) {
+  lcd.setCursor(7, 1);
+  if(isCountdown) {
+    lcd.print("T");
+  } else {
+    lcd.print(" ");
+  }
   print2digits(t.hours);
   lcd.print(":");
   print2digits(t.minutes);
   lcd.print(":");
   print2digits(t.seconds);
+
 }
 
 // --------------------- setup() ---------------------
@@ -295,13 +301,14 @@ void loop() {
     // If alarm is set, show countdown
     if (currentSeconds < globalState.nextAlarm) {
       unsigned long timeLeft = globalState.nextAlarm - currentSeconds;
-      displayTime(secondsToTime(timeLeft));
+      displayTime(true, secondsToTime(timeLeft));
     } else {
-      displayTime(currentTime);  // Show current time if countdown finished
+      displayTime(false, currentTime);  // Show current time if countdown finished
     }
+
   } else {
     // No alarm set, show current time
-    displayTime(currentTime);
+    displayTime(false, currentTime);
   }
   delay(150);
 }
