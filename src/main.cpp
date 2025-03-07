@@ -58,6 +58,7 @@ DS3231 rtclock;
 #define MED_URSOSAN                    "Ursosan 1/6"
 #define MED_SLEEP                      "Sleep"
 #define MED_WALK                       "Walk"
+#define MED_IMPULSE                    "Impulse"
 
 // Task declaration macros
 #define SIMPLE_TASK(msg)               { msg, HAS_NO_TIMER, 0 }
@@ -65,21 +66,6 @@ DS3231 rtclock;
 #define ABSOLUTE_TIMER_TASK(msg, time) { msg, HAS_ABSOLUTE_TIMER, time }
 #define SPACER_TASK()                  { "Spacer", HAS_REALTIVE_TIMER, TEN_MINUTES }
 #define BLOCK_SEPARATOR()              { "---------------", HAS_NO_TIMER, 0 }
-
-// Task block macros
-#define MEDICATION_BLOCK(var_med)      \
-    /* Common morning/evening meds */  \
-    SIMPLE_TASK(MED_ANTEPSIN),        \
-    SIMPLE_TASK(MED_KVAMATEL),        \
-    SIMPLE_TASK(MED_VETMEDIN),        \
-    RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR), \
-    /* Variable medication */         \
-    SIMPLE_TASK(var_med),             \
-    /* Rest of common meds */         \
-    SIMPLE_TASK(MED_GABA),            \
-    SIMPLE_TASK(MED_AMLODIPIN),       \
-    SIMPLE_TASK(MED_VIAGRA),          \
-    SPACER_TASK()
 
 // --------------------- Types ---------------------
 struct TimeRecord {
@@ -95,23 +81,43 @@ struct TaskEntry {
 };
 
 struct TaskEntry tasks[] = {
+    // Morning meds
+    SIMPLE_TASK(MED_ANTEPSIN),
+    SIMPLE_TASK(MED_KVAMATEL),
+    SIMPLE_TASK(MED_VETMEDIN),
     SIMPLE_TASK(MED_WALK),
-    MEDICATION_BLOCK(MED_TRIGRIM),
+    SIMPLE_TASK(MED_FEED),
+    SIMPLE_TASK(MED_TRIGRIM),
+    SIMPLE_TASK(MED_GABA),
+    SIMPLE_TASK(MED_AMLODIPIN),
+    SIMPLE_TASK(MED_VIAGRA),
+    SPACER_TASK(),
     BLOCK_SEPARATOR(),
 
-    SIMPLE_TASK(MED_WALK),
-
-    MEDICATION_BLOCK(MED_VEROSHPIRON),
+    // Day meds
+    SIMPLE_TASK(MED_VETMEDIN),
+    RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR),
+    SIMPLE_TASK(MED_IMPULSE),
     BLOCK_SEPARATOR(),
 
-    SIMPLE_TASK(MED_WALK),
+    // Evening meds
+    SIMPLE_TASK(MED_ANTEPSIN),
+    SIMPLE_TASK(MED_KVAMATEL),
+    RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR),
+    SIMPLE_TASK(MED_VEROSHPIRON),
+    SIMPLE_TASK(MED_GABA),
+    SIMPLE_TASK(MED_AMLODIPIN),
+    SIMPLE_TASK(MED_VIAGRA),
+    SPACER_TASK(),
+    BLOCK_SEPARATOR(),
 
-
+    // Night meds
     SIMPLE_TASK(MED_VETMEDIN),
     RELATIVE_TIMER_TASK(MED_FEED, HALF_HOUR),
     SIMPLE_TASK(MED_WALK),
-    RELATIVE_TIMER_TASK(MED_URSOSAN, TEN_MINUTES),
-    SIMPLE_TASK(MED_SLEEP)
+    SIMPLE_TASK(MED_URSOSAN),
+    SIMPLE_TASK(MED_SLEEP),
+    BLOCK_SEPARATOR()
 };
 
 #define ALL_MSGS (sizeof(tasks) / sizeof(tasks[0]))
